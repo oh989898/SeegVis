@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SEEGVIS</title>
+    <link rel="icon" href="/static/data/eeg3.jpg">
+    <script src="/static/js/jquery.min.js"></script>
+    <!--
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" />
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/4.3.0/echarts.min.js"></script>
+    -->
+    <script src="/static/js/bootstrap3.3.7.min.js"></script>
+    <link rel="stylesheet" href="/static/css/bootstrap3.3.7.min.css" />
+
+    <script src="/static/js/echarts.min.js"></script>
+    <script src="/static/js/echarts-gl.min.js"></script>
+
+    <link rel="stylesheet" href="/static/css/bootstrap-slider.min.css" />
+    <script src="/static/js/bootstrap-slider.min.js"></script>
+
+    <link rel="stylesheet" href="/static/css/bootstrap-select.min.css" />
+    <script src="/static/js/bootstrap-select.min.js"></script>
+
+    <link rel="stylesheet" href="/static/css/bootstrap-switch.min.css" />
+    <script src="/static/js/bootstrap-switch.min.js"></script>
+
+    <script src="/static/js/d3.v4.js"></script>
+    <script src="/static/js/d3-scale-chromatic.v1.min.js"></script>
+
+    <link rel="stylesheet" href="/static/css/seegvis.css">
+    <script src="https://pv.sohu.com/cityjson?ie=utf-8"></script>
+</head>
+<body style="min-width: 900px;">
+<div id="nav-1">
+    <ul class="system_nav">
+        <li class="slide1"></li>
+        <li class="slide2"></li>
+        <li class="system_name">SEEGVIS</li>
+        <li><a  name="0" class="active">基本信息</a></li>
+        <li><a name="1" >空间坐标</a></li>
+        <li><a name="2" >折线图</a></li>
+        <li><a name="3" >小提琴图</a></li>
+        <li><a name="4" >距离分段分析</a></li>
+        <li><a name="5" >OUT 分析</a></li>
+        <li style="position: absolute; right: 30px; line-height: 2.75;"><span class="badge" id="systemGuide" title="查看使用说明">系统指南</span></li>
+    </ul>
+</div>
+
+<div style="margin-bottom: 65px;"></div>
+
+<div class="system_module">
+    <form method="post" action="/" enctype="multipart/form-data" style="padding-left: 20px;">
+        {% if not fc_info %}
+            请上传mat格式文件：<input type="file" accept=".mat" name="up_file" class="file_mat button"/>
+            <input type="submit" value="提交" class="submit_mat button"/><br>
+        {% else %}
+            更改数据文件：<input type="file" accept=".mat" name="up_file" class="file_mat button"/>
+            <input type="submit" value="更改" class="submit_mat button"/><br>
+        {% endif %}
+        <input type="hidden" value="{{ userid }}" name="userid"/>
+    </form>
+    {% if fc_info %}
+    <div style="font-size: 26px;font-weight: bold;text-align: center;margin-bottom: 15px;margin-top: 10px;">
+        当前上传的数据文件为：<font color="red">{{ file_name }}</font>
+    </div>
+    <div style="display: inline-block;width: 50%;">
+        <table align="center" class="table tab1 table-bordered" style="text-align: center;max-width: 96%">
+            <tbody>
+            {% for key,value in fc_info.items() %}
+                <tr class="active">
+                    <td>{{ key }}</td>
+                    {% if key == 'electrode_names' %}
+                        <td>
+                        {% for item in value %}
+                            {{ loop.index0 }}:&nbsp;{{ item }};&nbsp;
+                        {% endfor %}
+                        </td>
+                    {% else %}
+                        <td>{{ value }}</td>
+                    {% endif %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="args_control" style="display: inline-block; width: 48%; vertical-align: top; margin-left: 10px;">
+        <h3 style="margin-top: 0">控制面板&nbsp;(DashBoard)</h3>
+        <div style="margin-top: 25px;">
+            <b>筛选通道：</b>
+            <select id="select_channels" class="selectpicker" multiple data-live-search="true" data-actions-box="true">
+                {% for electrode in fc_info.electrode_names %}
+                    <option value="{{ loop.index0 }}">{{ electrode }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-primary" onclick="referZone()">参考区域</button>
+            &nbsp;&nbsp;&nbsp;已选择&nbsp;<span id="electrodes_num" style="color:red;"></span>&nbsp;个通道
+        </div>
+        <div style="margin-top: 25px;">
+            <b>筛选时间：{{ fc_info.start }}</b>&nbsp;&nbsp;&nbsp;&nbsp;
+            <input id="time_slider" type="text"/><b>&nbsp;&nbsp;&nbsp;&nbsp;
+            {{ fc_info.end }}</b>
+        </div>
+        <div style="margin-top: 25px;">
+            <b>设置阈值：</b>
+            <input id="h2_threshold" type="text" value="0" maxlength="12" onkeyup="value=value.replace(/[^.\d]/g,'')">
+        </div>
+        <div style="margin-top: 25px;">
+            <b>筛选子波：</b>
+            <select id="select_wave" class="selectpicker">
+                <option>Any Wave</option>
+                <option>Delta</option>
+                <option>Theta</option>
+                <option>Alpha</option>
+                <option>Beta</option>
+                <option>Gamma</option>
+                <option>Gamma2</option>
+                <option>Ripple</option>
+                <option>Fast Ripple</option>
+            </select>
+            &nbsp;&nbsp;<span style="color:red;">筛选子波功能暂未实现！</span>
+        </div>
+        <div style="margin-top: 25px;">
+            <div style="display: inline-block;vertical-align: top; margin-top: 8px;"><b>确定区域：</b></div>
+            <label style="width:200px;">
+                <div class="input-group">
+                    <span class="input-group-addon">EZ</span>
+                    <input class="form-control" type="text" id="EZ" onkeyup="value=value.replace(/[^,\- \d]/g,'')">
+                </div>
+            </label>
+            <label style="width:200px;">
+                <div class="input-group">
+                    <span class="input-group-addon">PZ</span>
+                    <input class="form-control" type="text" id="PZ" onkeyup="value=value.replace(/[^,\- \d]/g,'')">
+                </div>
+            </label>
+            <label style="width:200px;">
+                <div class="input-group">
+                    <span class="input-group-addon">NIZ</span>
+                    <input class="form-control" type="text" id="NIZ" onkeyup="value=value.replace(/[^,\- \d]/g,'')">
+                </div>
+            </label>
+        </div>
+        <div style="margin-top:10px;">
+            <button class="btn btn-default" onclick="assignZone()">参考坐标</button>&nbsp;
+            <button class="btn btn-success" onclick="select_confirm()">确认选择</button>&nbsp;
+            <button class="btn btn-warning" onclick="select_reset()">恢复默认</button>&nbsp;&nbsp;
+            <div id="select_confirm" style="display:inline-block;font-size: larger; text-align: left;"></div>
+        </div>
+    </div>
+    <div style="margin-top: 20px; text-align: center">
+        <div>
+            <label>
+                <span class="btn btn-primary"> 
+                    读取标记文件<input type="file" accept=".txt,.csv" style="display: none;" multiple onchange="readFromCsv(this,readToArray)">
+                </span>
+            </label>
+            <button class="btn btn-primary" onclick="saveMarks()">保存时间标记</button>
+            <button class="btn btn-primary" data-toggle="modal" data-target="#myModal"
+                    onclick=$("#operate_type").text("新增")>新增时间标记</button>
+            <button class="btn btn-primary" onclick=$("#time_marks").empty()>清空所有标记</button>
+        </div>
+        <div style="margin-top: 10px;">
+            <table class="table table-bordered" align="center" style="width: 72%">
+                <thead>
+                    <tr>
+                        <th width="145px;">标记名</th>
+                        <th width="135px;">起始时间</th>
+                        <th width="135px;">终止时间</th>
+                        <th style="min-width: 160px;">描述</th>
+                        <th width="250px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="time_marks">
+                </tbody>
+            </table>
+        </div>
+        <div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true" onclick="cancel()">
+                            &times;
+                        </button>
+                        <h4 class="modal-title" id="myModalLabel">
+                            <span id="operate_type"></span>时间标记
+                        </h4>
+                    </div>
+                    <div class="modal-body">
+                        <div style="display: inline-block; width: 34%;">
+                            <div class="input-group">
+                                <span class="input-group-addon">标记名</span>
+                                <input id="add_name" type="text" class="form-control">
+                            </div>
+                        </div>
+                        <div style="display: inline-block; width: 32%;">
+                            <div class="input-group">
+                                <span class="input-group-addon">起始时间</span>
+                                <input id="add_start" type="text" class="form-control" onkeyup="value=value.replace(/[^.\d]/g,'')">
+                            </div>
+                        </div>
+                        <div style="display: inline-block; width: 32%;">
+                            <div class="input-group">
+                                <span class="input-group-addon">终止时间</span>
+                                <input id="add_end" type="text" class="form-control" onkeyup="value=value.replace(/[^.\d]/g,'')">
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-addon">描述</span>
+                            <input id="add_desc" type="text" class="form-control">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal" onclick="cancel()">取消</button>
+                        <button type="button" class="btn btn-primary" data-dismiss="modal" onclick="operateMarks()">
+                            确定
+                        </button>
+                    </div>
+                </div><!-- /.modal-content -->
+            </div><!-- /.modal -->
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="system_module"  style="display: none;">
+    <div style="padding-left: 20px;">
+        请上传对应电极点的空间坐标：<input type="file" accept=".txt,.csv" id="coordinate_file" class="button"
+                             onchange="showCoordinate(this)"/>
+        <span id="coordinate_file_name"></span>
+    </div>
+    <div id="electrodes" style="margin-top: 10px;"></div>
+</div>
+
+<div class="system_module" style="display: none;" align="center">
+    <table>
+        <tbody>
+        <tr>
+            <td style="padding-right: 20px;">
+                <div class="input-group">
+                    <span class="input-group-addon">信号1（S1）</span>
+                    <input class="form-control" type="text" id="s1">
+                </div>
+            </td>
+            <td style="padding-right: 10px">
+                <div class="input-group">
+                    <span class="input-group-addon">信号2（S2）</span>
+                    <input class="form-control" type="text" id="s2">
+                </div>
+            </td>
+            <td>
+                <label class="btn btn-success" onclick="getH2()">提交</label>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+    <!-- Create a div where the graph will take place -->
+    <div id="my_dataviz" style="margin-top: 20px;"></div>
+</div>
+
+<div class="system_module"  style="display: none;">
+    <div id="analyse">
+        <table style="margin-bottom: 15px;" align="center">
+            <tbody>
+            <tr>
+                <td>
+                    <b style="font-size: larger;">调整小提琴图 bins</b>
+                </td>
+                <td style="padding-left: 10px;padding-right: 8px;">
+                    <input id="violin_bins" type="text"/>
+                </td>
+                <td style="padding-left: 10px;" title="切换模式：显示点或显示四分位">
+                    <input type="checkbox" id="violin_status" checked>
+                </td>
+                <td style="padding-left: 10px;">
+                    <label class="btn btn-success" onclick="fcAnalyse()">FC分析</label>
+                </td>
+                <td style="padding-left: 10px;">
+                    <label class="btn btn-success" onclick="violin_play()">播放</label>
+                </td>
+                <td style="padding-left: 10px;">
+                    <label class="btn btn-success" onclick="violin_pause(this)" id="play_pause">暂停</label>
+                </td>
+                <td >
+                    <a id="fc_result" style="margin-left: 15px;visibility: hidden;cursor: pointer;" onclick="downloadFCResult()">下载FC计算结果</a>
+                </td>
+                <td >
+                    <a id="fc_result_s" style="margin-left: 15px;visibility: hidden;cursor: pointer;" onclick="downloadFCStatistic()">下载FC统计结果</a>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+        <!-- Create a div where the graph will take place -->
+        <div id="violinTimeDiv" style="margin-left: 360px;display: none;">
+            <label id="lastTime" onclick="last_time()" class="btn-sm btn-default ctlTime" style="visibility: hidden;">上一时刻</label>
+            &nbsp;当前时间为：<span id="violinTimeSpan" style="color:red;"></span>&nbsp;
+            <label id="nextTime" onclick="fc_play()" class="btn-sm btn-default ctlTime">下一时刻</label>
+        </div>
+        <div id="violinBwt" style="margin-top: -15px;">
+            <div id="violinLeft" style="width:1000px;float:left; text-align: center;margin-left: 10px;"></div>
+            <div id="violinRight" style="width:300px;float:left; text-align: center;"></div>
+        </div>
+    </div>
+</div>
+
+<div class="system_module"  style="display: none;" align="center">
+    <table>
+        <tbody>
+        <tr>
+            <td>
+                <b style="font-size: larger;">调整小提琴图 bins</b>
+            </td>
+            <td style="padding-left: 10px;padding-right: 8px;">
+                <input id="violin_bins2" type="text"/>
+            </td>
+            <td style="padding-left: 10px;" title="切换模式：显示点或显示四分位">
+                <input type="checkbox" id="violin_status2" checked>
+            </td>
+            <td style="padding-left: 10px;">
+                <div class="input-group">
+{#                    <span class="input-group-addon">距离间隔大小（cm）</span>#}
+                    <input class="form-control" type="text" id="distance_interval" onkeyup="value=value.replace(/[^.\d]/g,'')" placeholder="请输入距离间隔（mm）" style="width: 168px;">
+                    <label class="input-group-addon btn btn-success" onclick="distanceAnalyse()">提交</label>
+                </div>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+    <div id="distance_hide_div" style="display: none;margin-top: 20px;">
+        分析类型：
+        <span>
+            <button id = "distance_vis_default" class="btn btn-default distance_button" onclick="distanceChartbyType(this,2)">H2</button>
+            <button class="btn btn-default distance_button" onclick="distanceChartbyType(this,3)">NWD</button>
+            <button class="btn btn-default distance_button" onclick="distanceChartbyType(this,4)">WD</button>
+        </span>
+        <a style="margin-left: 10px;cursor: pointer;" onclick="downloadDistanceResult()">下载计算结果</a>
+        <a style="margin-left: 15px;cursor: pointer;" onclick="downloadDistanceStatistic()">下载统计结果</a>
+
+    </div>
+    <!-- Create a div where the graph will take place -->
+    <div id="distance_vis" style="margin-top: 20px;"></div>
+</div>
+
+<div class="system_module"  style="display: none;">
+    <div id="out_result" style="margin-left: 12px; display: none;">
+        OUT LINKS:<br>
+        <span id="out_links"></span><br>
+        IN LINKS:<br>
+        <span id="in_links"></span><br>
+        <a id="out_result_dl" href="static/data/out_result_{{ userid }}.xls" download="out_result" style="cursor: pointer;">下载&nbsp;OUT&nbsp;分析结果</a>
+        <a id="out_result_s" style="margin-left: 20px;visibility: hidden;cursor: pointer;" onclick="downloadOUTStatistic()">下载区域统计结果</a>
+        <hr style="margin-top: 6px; margin-bottom: 18px;">
+    </div>
+    <table align="center">
+        <td style="width: 168px;">
+            <b style="font-size: larger;">当前h2阈值为：<span id="h2_threshold_value" style="color: red">0</span></b>
+        </td>
+        <td style="padding-right: 20px;">
+            <input id="h2_threshold2" class="form-control" type="text"/>
+        </td>
+        <td>
+            <button class="btn btn-default" onclick="outAnalyse(this,'OUT')">OUT</button>
+            <button class="btn btn-default" onclick="outAnalyse(this,'OUT/IN')">OUT / IN</button>
+            <button class="btn btn-default" onclick="outAnalyse(this,'OUT-IN')">OUT - IN</button>
+            <button class="btn btn-default" onclick="outAnalyse(this,'IN')">IN</button>
+        </td>
+        <td style="padding-left: 15px;">
+            <select id="zone_analyse_type" class="selectpicker" data-width="auto">
+                <option>median</option>
+                <option>mean</option>
+                <option>sum</option>
+                <option>max</option>
+                <option>min</option>
+            </select>
+            <button class="btn btn-warning" onclick="outZoneAnalyse()">区域分析</button>
+        </td>
+    </table>
+    <div id="out_chart" style="display: none; margin-top: 15px;">
+        <!--
+        <div id="out_in_river" style="display: inline-block;height: 500px; width: 58%; min-width: 800px"></div>
+        <div id="out_in_heat" style="display: inline-block;height: 500px; width: 40%; min-width: 600px"></div>
+        -->
+        <div id="out_in_river" style="width: 58%; float: left"></div>
+        <div style="width: 42%; float: left" align="center">
+            <table>
+                <tbody>
+                <tr>
+                    <td style="padding-right: 10px;">
+                        <div class="input-group">
+                            <span class="input-group-addon">min</span>
+                            <input class="form-control" type="text" id="bar_min" onkeyup="value=value.replace(/[^-.\d]/g,'')" style="width: 5em;">
+                        </div>
+                    </td>
+                    <td style="padding-right: 10px">
+                        <div class="input-group">
+                            <span class="input-group-addon">max</span>
+                            <input class="form-control" type="text" id="bar_max" onkeyup="value=value.replace(/[^.\d]/g,'')" style="width: 5em;">
+                        </div>
+                    </td>
+                    <td>
+                        <label class="btn btn-success" onclick="reset_heatmap()">重绘</label>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <div id="out_in_heat"></div>
+        </div>
+    </div>
+</div>
+
+</body>
+<script src="/static/js/seegvis.js"></script>
+<script src="/static/js/visChart.js"></script>
+<script>
+    var fc_info = {{ fc_info | d('null') | safe }}; // 注意： 冒号后面不能有空格！ 引号中可以是对象，如 :"{xk:12}"，注：这里的null就是实际的null，不是字符串，如果要用字符串的话得这样写：d('`null`') 加反引号
+    var init = {{ file_name | d('null') | safe }};  // 注：safe表示渲染时不转语义
+    var msg = {{ msg | d('null') | safe }};
+    var userid = $("input[name='userid']").val();
+    var electrodes_len = 0;  // 可以用来判断是否传入文件
+    if(msg){
+        alert(msg);
+    }
+    var one_elect = new Set(); //电极点名字
+    var one_elect_co = {};  // C2 的坐标位置，key是电极名，value是该电极的坐标
+    var two_elect_co = [];  // C2-C3 点的坐标位置（数组按照 electrode_names 顺序排列）
+    var ez_p=[];  // 存储的是属于ez的电极对的下标，如ez_p=[1,3]; 则说明electrode_names中下标为1,3的电极对属于ez（此信息来自坐标文件）
+    var pz_p=[];
+    var niz_p=[];
+    var ez_u = [], pz_u = [], niz_u = []; // 与ez_p一样，但此信息来自用户自定义
+
+    var databyType={}; // 这是 h2 的 统计结果
+    var directionByType={};  // 这是 directionality 的 统计结果
+    var ez = $("#EZ"), pz = $("#PZ"), niz = $("#NIZ");  // zone 电极输入
+    var play_i = showTimeInterval = null;  // 小提琴图的播放
+
+    var div_tooltip = d3.select("body").append("div")  // 图中的tooltip
+    .attr("class", "tooltip1")  //area
+    .style("opacity", 0);  // 自动调节大小
+
+    var show_type_direction = 0; // 3 表示 "nwd" 4 表示 "wd"
+
+    var h2_threshold = 0;
+    var h2_threshold_slider = new Slider("#h2_threshold2", {
+        min: 0,
+        max: 1,
+        step: 0.001,
+        value: 0
+    });
+    h2_threshold_slider.on("change", function (val) {  // 不能用slide，因为slide 是指拖动，不是改变
+        $("#h2_threshold_value").text(val.newValue);
+        $("#h2_threshold").val(val.newValue);
+        h2_threshold = val.newValue;
+    });
+
+    var violin_bins_slider = new Slider("#violin_bins", {
+        min: 1,
+        max: 20,
+        step: 1,
+        value: 10
+    });
+    violin_bins_slider.on("change", function (val) {  // 不能用slide，因为slide 是指拖动，不是改变
+        if (download_FC_data.length > 0){
+            violinBwt();
+            // 3 表示 "nwd" 4 表示 "wd"
+            if (show_type_direction){
+                directionality(show_type_direction)
+            }
+        }
+    });
+
+    $('#violin_status').bootstrapSwitch({    //初始化按钮
+        onText:"Yes",
+        offText:"No",
+        labelText: "Show Points",
+        labelWidth: 80,
+        onColor:"success",
+        offColor:"warning",
+        // size:"small",
+        onSwitchChange:function(event,state){
+            if (download_FC_data.length > 0){
+                violinBwt();
+                if (show_type_direction){
+                    directionality(show_type_direction)
+                }
+            }
+           /*
+          if(state){
+               console.log("开启");
+             }else{
+              console.log("关闭");
+             }
+         */
+        }
+    });
+
+    var violin_bins_slider2 = new Slider("#violin_bins2", {
+        min: 1,
+        max: 20,
+        step: 1,
+        value: 10
+    });
+    violin_bins_slider2.on("change", function (val) {  // 不能用slide，因为slide 是指拖动，不是改变
+        if (Object.keys(distance_group).length > 0){
+            let type = 2;
+            for (i of $(".distance_button")) {
+                if (i.className.includes("warning")) {
+                    distanceChartbyType(i,type);
+                    break;
+                }
+                type ++;
+            }
+        }
+    });
+
+    $('#violin_status2').bootstrapSwitch({    //初始化按钮
+        onText:"Yes",
+        offText:"No",
+        labelText: "Show Points",
+        labelWidth: 80,
+        onColor:"success",
+        offColor:"warning",
+        // size:"small",
+        onSwitchChange:function(event,state){
+            if (Object.keys(distance_group).length > 0){
+                let type = 2;
+                for (i of $(".distance_button")) {
+                    if (i.className.includes("warning")) {
+                        distanceChartbyType(i,type);
+                        break;
+                    }
+                    type ++;
+                }
+            }
+        }
+    });
+
+    var time_slider = null;
+    var select_channels = $('#select_channels');
+    var select_ei = [];  // 选择电极（通道）的下标数组
+    var select_wave = $("#select_wave");
+    var elen = 0; // 电极的个数
+    var zone_elen_warn = "数字越界！数字范围应为：0至";
+    if (init){
+        elen = fc_info["electrode_names"].length;
+        zone_elen_warn = zone_elen_warn + (elen - 1);
+        time_slider = new Slider('#time_slider', {
+            min: fc_info.start,
+            max: fc_info.end,
+            step: fc_info.step,
+            value: [fc_info.start, fc_info.end],
+            // tooltip: 'always'
+        });
+        /*
+        slider.on("slideStart", function(o){
+            console.log("OO",o);
+            //console.log("NN",n);
+        });
+        */
+        select_wave.selectpicker({});
+        select_wave.selectpicker('render');
+
+        select_channels.selectpicker({});
+        select_channels.selectpicker('selectAll');
+        select_channels.selectpicker('render');
+        electrodes_len = select_channels.val().length;
+        $("#electrodes_num").text(electrodes_len);
+        select_channels.on("change",function () {
+            $("#electrodes_num").text(select_channels.val().length);
+        });
+        for (let i =0; i < electrodes_len; i++){
+            select_ei.push(i);
+        }
+    }
+
+    $(".submit_mat").click(function(e){
+        //alert($(".file_mat").val());
+        if (!$(".file_mat").val()){
+            alert("您还未选择.mat数据文件!");
+            e.preventDefault();
+        }
+    });
+    //阻止默认行为，stopPropagation(); -- 阻止元素冒泡事件
+    $("#coordinate_file").click(function(e){
+        /* js与Django交互的条件：
+        1、views.py中返回的函数中的值要用 json.dumps()处理
+        2、在网页上要加一个 safe 过滤器
+         */
+        if (!init){
+            alert("请先上传.mat数据文件!");
+            e.preventDefault();
+        }
+    });
+    $("#systemGuide").click(function(e){
+        e.stopPropagation();
+        // $(window).attr('location', '/guide');  // 在当前页面跳转
+        window.open('/guide');  // 在新窗口下跳转
+    });
+
+    var select_start = fc_info ? fc_info.start : null;
+    var select_end = fc_info ? fc_info.end : null;
+
+    function select_confirm() {
+        let threshold = $("#h2_threshold").val();
+        var reg = /^0(\.[0-9]*)?$/;   // 匹配 [0,1) 的小数，包括 "0."
+        let select_text = $("#select_confirm");
+        if (!reg.test(threshold)){
+            select_text.css("color","deeppink").text("阈值输入有误");
+        } else{
+            h2_threshold = parseFloat(threshold);
+            select_start = time_slider.getValue()[0];
+            select_end = time_slider.getValue()[1];
+            /*
+            let select_electrodes = select_channels.val();
+            select_ei = [];
+            for (let i =0; i < select_channels.val().length; i++){
+                select_ei.push(fc_info.electrode_names.indexOf(select_electrodes[i]));
+            }
+            */
+            select_ei = select_channels.val().map(d => parseInt(d));
+            $("#h2_threshold").val(h2_threshold);
+            h2_threshold_slider.setValue(h2_threshold);
+            $("#h2_threshold_value").text(h2_threshold);
+
+            // let ez_val = ez.val(), pz_val = pz.val(),niz_val = niz.val();
+            ez_u = to_list(ez.val());
+            pz_u = to_list(pz.val());
+            niz_u = to_list(niz.val());
+
+            let zone_flag = true;
+
+            if (typeof(ez_u) === "string"){
+                select_text.css("color","darkred").text("提示：EZ" + ez_u);
+                ez_u = [];
+                zone_flag = false;
+            } else{
+                if (ez_u.length && ez_u[ez_u.length-1] >= elen){
+                    select_text.css("color","darkred").text("提示：EZ" + zone_elen_warn);
+                    ez_u = [];
+                    zone_flag = false;
+                }
+            }
+            if (typeof(pz_u) === "string"){
+                select_text.css("color","darkred").text("提示：PZ" + pz_u);
+                pz_u = [];
+                zone_flag = false;
+            }else{
+                if (pz_u.length && pz_u[pz_u.length-1] >= elen){
+                    select_text.css("color","darkred").text("提示：PZ" + zone_elen_warn);
+                    pz_u = [];
+                    zone_flag = false;
+                }
+            }
+            if (typeof(niz_u) === "string"){
+                select_text.css("color","darkred").text("提示：NIZ" + niz_u);
+                niz_u = [];
+                zone_flag = false;
+            }else{
+                if (niz_u.length && niz_u[niz_u.length-1] >= elen){
+                    select_text.css("color","darkred").text("提示：NIZ" + zone_elen_warn);
+                    niz_u = [];
+                    zone_flag = false;
+                }
+            }
+            if (zone_flag) {
+                select_text.css("color","green").text("设置成功！");
+            }
+        }
+        select_text.css("visibility","visible");
+        window.setTimeout(function() {
+            $("#select_confirm").css("visibility","hidden");
+        },3000)
+        /*
+        $("#select_confirm").fadeIn();
+        $("#select_confirm").fadeOut();
+        */
+    }
+    function select_reset() {
+        select_start = fc_info.start;
+        select_end = fc_info.end;
+        select_ei = [];
+        for (let i =0; i < electrodes_len; i++){
+            select_ei.push(i);
+        }
+        h2_threshold = 0;
+
+        time_slider.setValue([select_start, select_end]);
+        select_channels.selectpicker('selectAll');
+        $("#electrodes_num").text(select_channels.val().length);
+        $("#h2_threshold").val(0);
+        ez.val("");
+        pz.val("");
+        niz.val("");
+        ez_u = [];
+        pz_u = [];
+        niz_u = [];
+        $("#select_confirm").css("color","green").css("visibility","visible").text("恢复成功");
+        window.setTimeout(function() {
+            $("#select_confirm").css("visibility","hidden");
+        },3000)
+    }
+    var mark_select = null;
+    // var marks_list = [['Name','Start','End','Description']];
+    $("#time_marks").delegate("button.modify", "click", function () {
+        let marks = [];
+        // console.log($(this).parent().siblings());
+        marks.push($(this).parent().siblings()[0].innerText);
+        marks.push($(this).parent().siblings()[1].innerText);
+        marks.push($(this).parent().siblings()[2].innerText);
+        marks.push($(this).parent().siblings()[3].innerText);
+        $("#operate_type").text("修改");
+        $("#add_name").val(marks[0]);
+        $("#add_start").val(marks[1]);
+        $("#add_end").val(marks[2]);
+        $("#add_desc").val(marks[3]);
+        mark_select = $(this).parent();
+    });
+    $("#time_marks").delegate("button.apply", "click", function () {
+        let mark_start = parseFloat($(this).parent().siblings()[1].innerText);
+        let mark_end = parseFloat($(this).parent().siblings()[2].innerText);
+        if (isNaN(mark_start) || isNaN(mark_end)){
+            alert("请将起始时间和终止时间设为数字！");
+            return;
+        }
+        if (mark_start > mark_end) {
+            alert("起始时间需小于终止时间！");
+            return;
+        }
+        mark_start = ((mark_start-fc_info.start)/fc_info.step).toFixed()*fc_info.step + fc_info.start;
+        mark_end = ((mark_end-fc_info.start)/fc_info.step).toFixed()*fc_info.step + fc_info.start;
+        // console.log(mark_start,mark_end);
+        time_slider.setValue([mark_start, mark_end]);
+    });
+    $("#time_marks").delegate("button.delete", "click", function () {
+        $(this).parent().parent().remove();
+    });
+    // 之所以以下文件不放进单独的js文件中，是因为引用了Django模板
+function getH2() {
+    if(!fc_info){
+        alert("请先上传.mat数据文件!");
+        return;
+    }
+    var s1 = parseInt($("#s1").val());
+    var s2 = parseInt($("#s2").val());
+    if (isNaN(s1)||isNaN(s2)||s1<0||s2<0){
+        //alert(s1+"\n"+s2);
+        alert("请正确输入两电极信号（格式需为非负整数）！");
+        return;
+    }
+    // var elen = fc_info["electrode_names"].length;
+    if(s1>=elen || s2>=elen){
+        alert("输入信号应小于"+elen+" !");
+        return;
+    }
+    $.get('/getH2', {"userid":userid,"s1":s1,"s2":s2,"select_start":select_start,"select_end":select_end,"h2_threshold":h2_threshold},
+        function(result, statue){
+            if(result["result"] === true){
+                //h2_max, lag_max, nw_direction, (sp - sn) / (sp + sn)
+                var s1_s2 = result["s1_s2"];
+                var signal = [fc_info["electrode_names"][s1],fc_info["electrode_names"][s2]];
+                var lens = parseInt((select_end - select_start)/fc_info.step + 1);
+                //var times = d3.range(fc_info["start"],fc_info["start"]+lens);
+                var data = [];
+                for(i=0;i<lens;i++){
+                    data.push({"time":select_start + i * fc_info.step,"h2":s1_s2[0][0][i], "lag":s1_s2[0][1][i]})
+                }
+                linechart(data,signal,lens,s1_s2[0][2],s1_s2[0][3],[two_elect_co[s1],two_elect_co[s2]],{   // twoElectCO(signal,one_elect_co)
+                    "median": [s1_s2[1][0],s1_s2[2][0],s1_s2[3][0]],
+                    "mean": [s1_s2[1][1],s1_s2[2][1],s1_s2[3][1]],
+                    "max": [s1_s2[1][2],s1_s2[2][2],s1_s2[3][2]],
+                    "min": [s1_s2[1][3],s1_s2[2][3],s1_s2[3][3]]
+                });
+            }else {
+                alert("Failed!\n message:"+result["msg"]);
+            }
+    });
+}
+
+function fcAnalyse(){
+    // let startTime = new Date().getTime();
+    if (!init){
+        alert("请先上传.mat数据文件!");
+        return;
+    }
+    /*
+    ez = $("#EZ").val();
+    pz = $("#PZ").val();
+    niz = $("#NIZ").val();
+    */
+    if (!(ez_u.length + pz_u.length + niz_u.length)){
+        alert("您还未在控制面板内确定区域！(EZ、PZ、NIZ不一定要全部输入）\n请用数字表示，格式应如：0-2,4");
+        return;
+    }
+    $(".ctlTime").css("visibility","hidden");
+    $("#play_pause").text("暂停");
+    if (showTimeInterval) {
+        clearInterval(showTimeInterval);
+    }
+
+    var fc_result = document.getElementById("fc_result");
+    fc_result.style.visibility = "hidden";
+    var fc_result_s = document.getElementById("fc_result_s");
+    fc_result_s.style.visibility = "hidden";
+    // alert(ez+"\n"+pz+"\n"+niz)
+    let violinTimeDiv = $("#violinTimeDiv");
+    //violinTimeDiv.style.display = "none";
+    let violinTimeSpan = $("#violinTimeSpan");
+
+    $.post('/fcAnalyse',{"userid":userid,"ez":JSON.stringify(ez_u),"pz":JSON.stringify(pz_u),"niz":JSON.stringify(niz_u),
+            "select_start":select_start,"select_end":select_end,"h2_threshold":h2_threshold},
+        function(result, statue){   // ["zone", "electrodes", "h2", "nwd", "wd"]  [ez_in, pz_in, niz_in, ez_pz, ez_niz, pz_niz]
+            if(result["result"] === true){
+                //h2_max, lag_max, nw_direction, (sp - sn) / (sp + sn)
+                // var zones = result["zones"];
+                fc_result.style.visibility = "visible";
+                fc_result_s.style.visibility = "visible";
+                violinTimeDiv.css("display","inline");
+                violinTimeSpan.text(select_start + " -- " + select_end);
+                download_FC_data = result["data"].reduce((a,b)=> a.concat(b));
+                violinBwt();
+                if (show_type_direction){
+                    directionality(show_type_direction)
+                }
+            }else {
+                alert(result["msg"])
+            }
+            // console.log(new Date().getTime() - startTime);
+    });
+}
+
+// var out_links = [], in_links = [];
+var zone_data = [];
+var outAnalyseType;  // 四种分析类型
+var download_zone_data = [];  // ["TIME", "EZ","PZ","NIZ","UNKNOWN"]
+var download_FC_data=[];  // [{"zone":, "electrodes":, "h2":, "nwd":, "wd":}, ...]
+var type_note; // 字符串，说明是何种out分析，及何种统计分析 eg："OUT --- median"
+
+var out_analyse_heat_data;
+var out_analyse_y_names;
+var out_analyse_x_time;
+
+function outAnalyse(e, type) {
+    if(!fc_info){
+        alert("请先上传.mat数据文件!");
+        return;
+    }
+    $.get('/outAnalyse',{"userid":userid,"select_start":select_start,"select_end":select_end, "h2_threshold":h2_threshold, "select_ei":JSON.stringify(select_ei)},
+        function(result, statue){
+            if(result["result"] === true) {
+                outAnalyseType = type;
+                $("#out_result_s").css("visibility","hidden");
+
+                // 通过所选的电极数来确定图的高度 height
+                let height = out_height_fun(select_ei.length);
+                $("#out_in_river").css("height",height + 2 * select_ei.length);
+                $("#out_in_heat").css("height",height);
+
+                let out_links = result["out_links"];
+                let in_links = result["in_links"];
+                $("#out_result").css("display","block");
+                $("#out_links").text(out_links.map(function (d) { return " ["+d+"] "}));
+                $("#in_links").text(in_links.map(function (d) { return " ["+d+"] "}));
+                let step = fc_info.step;
+                $(e).siblings().removeClass().addClass("btn btn-default");
+                $(e).removeClass().addClass("btn btn-success");
+                // console.log(out_in_links, links);
+                let select_electrode_names = [];
+                let stream_data = [];
+                out_analyse_heat_data = [];
+                let len_t = out_links.length;
+                let len_e = out_links[0].length;
+                let min = 0;
+                let max = 0;
+                let value = 0;
+                for (let j = 0; j < len_e; j++) {  // 初始化所选电极通道名
+                    select_electrode_names.push(fc_info.electrode_names[select_ei[j]]);
+                }
+
+                zone_data = [];
+                /*
+                zone_stream_data = [];
+                zone_heat_data = [];
+                zone_data_max = 0; zone_data_min = 0; // 存放以上两个变量的最大值与最小值
+                */
+                for (let i = 0; i < len_t; i++) {  // i 是时间
+                    let t = select_start + i * step;
+                    // let ez_num = 0, pz_num = 0, niz_num = 0, unknow_num = 0;
+                    let ez_num = [], pz_num = [], niz_num = [], unknow_num = [];
+                    for (let j = 0; j < len_e; j++) {  // j 是 电极
+                        if (type === 'OUT') {
+                            value = out_links[i][j];
+                        }
+                        else if (type === 'IN') {
+                            value = in_links[i][j];
+                        }
+                        else if (type === 'OUT/IN') {
+                            value = parseFloat(((out_links[i][j] + 1) / (in_links[i][j] + 1)).toFixed(4));
+                        }
+                        else if (type === 'OUT-IN') {
+                            value = out_links[i][j] - in_links[i][j];
+                        }
+
+                        // 判断电极在何种用户定义的区域中
+                        if (ez_u.includes(select_ei[j])){
+                            ez_num.push(value);
+                        }else if (pz_u.includes(select_ei[j])){
+                            pz_num.push(value);
+                        }else if (niz_u.includes(select_ei[j])){
+                            niz_num.push(value);
+                        }else{
+                            unknow_num.push(value);
+                        }
+
+                        stream_data.push([t, value, select_electrode_names[j]]);
+                        out_analyse_heat_data.push([i, len_e - j - 1, value]);
+                        if (value > max) {
+                            max = value;
+                        } else if (value < min) {
+                            min = value;
+                        }
+                    }
+                    zone_data.push([ez_num, pz_num, niz_num, unknow_num]);
+                }
+                // console.log(min, max);
+                if (type === 'OUT-IN') {
+                    for (let i = 0; i < stream_data.length; i++) {
+                        stream_data[i][1] -= min;
+                    }
+                }
+                // console.log(stream_data);
+                // console.log(heat_data);
+                $("#out_chart").css("display","block");
+                $("#bar_min").val(min);
+                $("#bar_max").val(max);
+                stream_out_in(stream_data,select_electrode_names, [select_start, select_end], step);
+                out_analyse_y_names = select_electrode_names.concat().reverse();
+                out_analyse_x_time = d3.range(select_start,select_end+step,step);
+                heat_out_in(out_analyse_heat_data, min, max, out_analyse_y_names, out_analyse_x_time);
+            } else{
+                alert("Failed!\n message:"+result["msg"]);
+            }
+    });
+}
+
+function outZoneAnalyse() { // type种类为：中值、均值、总和  median，mean，sum
+    /*
+    if (!init){
+        alert("请先上传.mat数据文件!");
+        return;
+    }
+    if (!(ez_u.length + pz_u.length + niz_u.length)){
+        alert("您还未在控制面板内确定区域！(EZ、PZ、NIZ不一定要全部输入）\n请用数字表示，格式应如：0-2,4");
+        return;
+    }
+    */
+    if (!zone_data.length){
+        alert("请先选择一种OUT分析，之后再进行区域分析！");
+        return;
+    }
+    // [ez_num, pz_num, niz_num, unknow_num]
+    let type = $("#zone_analyse_type").val();
+    let ez_r,pz_r,niz_r,unk_r,min,max;
+    let zone_stream_data = []; // 每个元素为：[时间，值，区域]，如：[100, 18, "EZ"]
+    out_analyse_heat_data = []; // 每个元素为：[横坐标，纵坐标，值]，如：[1, 3, 20]
+
+    download_zone_data = [];
+    for (let i = 0; i < zone_data.length; i++) {  // i 是时间下标
+        let t = select_start + i * fc_info.step;
+
+        ez_r = zone_data[i][0].length ? d3[type](zone_data[i][0]) : 0;
+        pz_r = zone_data[i][1].length ? d3[type](zone_data[i][1]) : 0;
+        niz_r = zone_data[i][2].length ? d3[type](zone_data[i][2]) : 0;
+        unk_r = zone_data[i][3].length ? d3[type](zone_data[i][3]) : 0;
+
+        zone_stream_data.push([t, ez_r, "EZ"]);
+        zone_stream_data.push([t, pz_r, "PZ"]);
+        zone_stream_data.push([t, niz_r, "NIZ"]);
+        // zone_stream_data.push([t, unk_r, "UNKNOWN"]);
+
+        out_analyse_heat_data.push([i, 2, ez_r]);
+        out_analyse_heat_data.push([i, 1, pz_r]);
+        out_analyse_heat_data.push([i, 0, niz_r]);
+        // zone_heat_data.push([i, 0, unk_r]);
+
+        download_zone_data.push([t,ez_r,pz_r,niz_r,unk_r]);
+    }
+
+    max = d3.max(out_analyse_heat_data.map(d => d[2]));
+    min = d3.min(out_analyse_heat_data.map(d => d[2]));
+    $("#bar_min").val(min);
+    $("#bar_max").val(max);
+    if (outAnalyseType === 'OUT-IN'){
+        for (let i = 0; i < zone_stream_data.length; i++) {
+            zone_stream_data[i][1] -= min;
+        }
+    }
+    $("#out_in_river").css("height",450);
+    $("#out_in_heat").css("height",420);
+    // stream_out_in(zone_stream_data,["EZ", "PZ", "NIZ", "UNKNOWN"], [select_start, select_end], fc_info.step);
+    stream_out_in(zone_stream_data,["EZ", "PZ", "NIZ"], [select_start, select_end], fc_info.step);
+    // heat_out_in(zone_heat_data, min, max, ["UNKNOWN", "NIZ", "PZ", "EZ"], d3.range(select_start, select_end + fc_info.step, fc_info.step));
+    out_analyse_y_names = ["NIZ", "PZ", "EZ"];
+    out_analyse_x_time = d3.range(select_start, select_end + fc_info.step, fc_info.step);
+    heat_out_in(out_analyse_heat_data, min, max, out_analyse_y_names, out_analyse_x_time);
+    // console.log(zone_data);
+    type_note = outAnalyseType + " --- " + type;
+    $("#out_result_s").css("visibility","visible").text("下载 "+type_note+" 区域统计结果");
+}
+
+function violin_play() {
+    if (!init){
+        alert("请先上传.mat数据文件!");
+        return;
+    }
+    if (!(ez_u.length + pz_u.length + niz_u.length)){
+        alert("您还未在控制面板内确定区域！(EZ、PZ、NIZ不一定要全部输入）\n请用数字表示，格式应如：0-2,4");
+        return;
+    }
+    $(".ctlTime").css("visibility","visible");
+    $("#play_pause").text("暂停");
+    /*
+    for (let play_i=select_start, ti = 0;play_i<=fc_info.end;play_i+=fc_info.step, ti++){
+        window.setTimeout(function() {
+            console.log(play_i);
+            fc_play(play_i);
+        },1200*ti);
+    }
+    */
+    play_i = select_start;
+    if (showTimeInterval) {
+        clearInterval(showTimeInterval);
+    }
+    showTimeInterval=setInterval(fc_play,1500);
+}
+function violin_pause(obj) {
+    if ($("#lastTime").css("visibility") === "hidden"){
+        alert("请先播放！");
+        return;
+    }
+    let type = $(obj).text();
+    //console.log(type);
+    if (type === "暂停"){
+        clearInterval(showTimeInterval);
+        $(obj).text("继续");
+    }else {
+        showTimeInterval=setInterval(fc_play,1500);
+        $(obj).text("暂停");
+    }
+}
+function last_time() {
+    if (play_i === select_start){
+        play_i = select_end - fc_info.step;
+
+    } else if(play_i - fc_info.step === select_start){
+        play_i = select_end;
+    } else {
+        play_i -= fc_info.step * 2;
+    }
+    fc_play();
+}
+/*
+function next_time() {
+    fc_play();
+}
+*/
+function fc_play() {
+    //console.log(play_i);
+    var fc_result = document.getElementById("fc_result");
+    fc_result.style.visibility = "hidden";
+    var fc_result_s = document.getElementById("fc_result_s");
+    fc_result_s.style.visibility = "hidden";
+    // alert(ez+"\n"+pz+"\n"+niz)
+    let violinTimeDiv = $("#violinTimeDiv");
+    let violinTimeSpan = $("#violinTimeSpan");
+
+    $.post('/fcAnalyse',{"userid":userid,"ez":JSON.stringify(ez_u),"pz":JSON.stringify(pz_u),"niz":JSON.stringify(niz_u),"select_start":play_i,"select_end":play_i,"h2_threshold":h2_threshold},
+        function(result, statue){
+            if(result["result"] === true){
+                //h2_max, lag_max, nw_direction, (sp - sn) / (sp + sn)
+                // var zones = result["zones"];
+                violinTimeDiv.css("display","inline");
+                violinTimeSpan.text(play_i);
+
+                if (play_i === select_end){
+                    play_i = select_start;
+                } else{
+                    play_i += fc_info.step;
+                }
+                fc_result.style.visibility = "visible";
+                fc_result_s.style.visibility = "visible";
+                download_FC_data = result["data"].reduce((a,b)=> a.concat(b));
+                violinBwt();
+                if (show_type_direction){
+                    directionality(show_type_direction)
+                }
+            }else {
+                alert(result["msg"])
+            }
+    });
+}
+var distance_group = {}; // {} 0: ["zone", "electrodes", "h2", "nwd", "wd", "distance"]
+var distance_group_static = {}; // {0: {"EZ": [中值、均值、最大值、最小值、数组长度、Q1、Q3]}}
+var distance_interval = NaN;
+function distanceAnalyse() {
+    // let startTime = new Date().getTime();
+    if (!init){
+        alert("请先上传.mat数据文件!");
+        return;
+    }
+    if (one_elect.size === 0){
+        alert("您未上传空间坐标文件，无法进行距离分段分析！");
+        return;
+    }
+    if (!(ez_u.length + pz_u.length + niz_u.length)){
+        alert("您还未在控制面板内确定区域！(EZ、PZ、NIZ不一定要全部输入）\n请用数字表示，格式应如：0-2,4");
+        return;
+    }
+
+    distance_interval = parseFloat($("#distance_interval").val());
+    if (isNaN(distance_interval)){
+        alert("请输入距离间隔！");
+        return;
+    }
+    let elects_distance;
+    try{
+        elects_distance = cal_distance_in(ez_u, "EZ").concat(cal_distance_in(pz_u, "PZ")).concat(cal_distance_in(niz_u, "NIZ")).
+        concat(cal_distance_bwt(ez_u,pz_u,"EZ_PZ")).concat(cal_distance_bwt(ez_u,niz_u,"EZ_NIZ")).concat(cal_distance_bwt(pz_u,niz_u,"PZ_NIZ"));
+    }catch (e) {
+        alert("存在异常坐标！\n"+e.message);
+        return;
+    }
+
+    $.post('/distanceAnalyse',{"userid":userid,"elects_distance":JSON.stringify(elects_distance),
+            "distance_interval":distance_interval,"select_start":select_start,"select_end":select_end, "h2_threshold":h2_threshold},
+        function(result, statue){
+            if(result["result"] === true){
+                distance_group = result["distance_group"];  // ["zone", "electrodes", "h2", "nwd", "wd", "distance"]
+                // $(".distance_button").removeAttr("disabled");
+                distanceChartbyType($("#distance_vis_default")[0], 2);
+                $("#distance_hide_div").css("display","block");
+            }else {
+                alert(result["msg"])
+            }
+    });
+}
+
+//监测页面退出事件
+function windowBeforeUnload() {
+   $.ajax({
+      type: "GET",
+      data: { "userid": userid },
+      url: "/exitSystem",
+      async: false
+    });
+}
+
+$(window).on('beforeunload', windowBeforeUnload);
+
+$("#out_result_dl").mousedown(function(){
+        $(window).off('beforeunload');
+    }).mouseleave(function(){
+        $(window).on('beforeunload',windowBeforeUnload);
+    });
+/*
+function downloadOutResult() {
+    window.open("static/data/out_result.xls");
+    // window.location.href = "新页面";
+}
+*/
+</script>
+</html>
